@@ -1,0 +1,2 @@
+g++ -I./include hello.cpp -L./lib -lxsmm -lblas -o hello
+LD_LIBRARY_PATH=./lib LIBXSMM_VERBOSE=2 ./hello
