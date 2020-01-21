@@ -6,20 +6,12 @@ from functools import reduce  # reduce
 import operator
 import numpy as np
 from numpy import linalg as LA  # for the matrices norm
-
-# matrices dimensions
-M = 32
-N = 32
-K = 32
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # random values bounds
 LOWER_BOUND = -1
 UPPER_BOUND = 1
-
-# posit environment
-pN = 16
-ES = 1
-set_posit_env(pN,ES)
 
 '''
     @brief performs a fused dot product of 2 lists of posits(the vectors)
@@ -69,7 +61,7 @@ def sign_extend(value, bits):
    @returns (tuple)(posit,float) with posit random number and his exact float representation
      c.f. lemma
 '''
-def get_random_posit( lower_bound, upper_bound ):
+def get_random_posit( lower_bound, upper_bound, pN ):
     p1 = Posit(lower_bound)
     p2 = Posit(upper_bound)
 
@@ -95,17 +87,18 @@ def get_random_posit( lower_bound, upper_bound ):
     @param m (int) dim row mat A
     @param n (int) dim col mat B
     @param k (int) dim col matA, and row mat B
+    @param pN (int) bitwidth of posit config
     @returns a 4elem tuple (Ap,Bp,Af,Bf)
        each element of the tuple is a list of list (2d array)
        matrices are stored in row major order
 '''
-def create_matrices(m, n, k):
+def create_matrices(m, n, k, pN):
     # matrices A
     Ap, Af = [],[]
     for i in range(m):
         rowAip, rowAif = [], []
         for j in range(k):
-            p, f = get_random_posit(LOWER_BOUND, UPPER_BOUND)
+            p, f = get_random_posit(LOWER_BOUND, UPPER_BOUND, pN)
             rowAip.append(p)
             rowAif.append(f)
         Ap.append(rowAip)
@@ -116,7 +109,7 @@ def create_matrices(m, n, k):
     for i in range(k):
         rowBip, rowBif = [], []
         for j in range(n):
-            p, f = get_random_posit(LOWER_BOUND, UPPER_BOUND)
+            p, f = get_random_posit(LOWER_BOUND, UPPER_BOUND, pN)
             rowBip.append(p)
             rowBif.append(f)
         Bp.append(rowBip)
@@ -135,8 +128,17 @@ def IEEE_MMM(Af, Bf, ieee_type=np.float64):
     Bf = np.array(Bf).astype(ieee_type)
     return np.matmul(Af, Bf)
 
-def main():
-    Ap, Af, Bp, Bf = create_matrices(M, N, K)
+def benchmark(posit_width, posit_es, matrix_size):
+    # matrices dimensions
+    M = matrix_size
+    N = matrix_size
+    K = matrix_size
+
+    # posit environment
+    pN = posit_width
+    ES = posit_es
+    set_posit_env(pN,ES)
+    Ap, Af, Bp, Bf = create_matrices(M, N, K, pN)
 
     # print(Ap)
     # print(Af)
@@ -169,6 +171,51 @@ def main():
     print('distance with posit fused'+str(pN)+':', dist_w_Cp_fused)
     print('distance with single precision ieee(32b):', dist_w_Cf_single)
     print('distance with half precision ieee(16b):', dist_w_Cf_half)
+
+    return [dist_w_Cp, dist_w_Cp_fused, dist_w_Cf_single, dist_w_Cf_half]
+
+def main():
+
+    posit_configs = [(4,0),(8,0),(16,1),(32,2)]
+    matrix_sizes = [1<<x for x in range(1,7)]
+    values = []
+
+    for i in matrix_sizes:
+        distances = []
+        dist_f_single, dist_f_half = 0,0
+        for j in posit_configs:
+            a,b,c,d = benchmark(j[0],j[1],i)
+            distances.append(a)
+            distances.append(b)
+            dist_f_single = c
+            dist_f_half = d
+        distances.append(dist_f_half)
+        distances.append(dist_f_single)
+        values.append(distances)
+
+    transposeValues = [list(i) for i in zip(*values)]
+    labels = [
+            'posit<4,0>',
+            'quire<4,0>',
+            'posit<8,0>',
+            'quire<8,0>',
+            'posit<16,1>',
+            'quire<16,1>',
+            'posit<32,2>',
+            'quire<32,2>',
+            'ieee<16,5>',
+            'ieee<32,8>'
+            ]
+
+    for i,j in enumerate(transposeValues):
+        plt.plot(matrix_sizes, transposeValues[i], label=labels[i])
+    plt.legend()
+    plt.yscale('log')
+    plt.xticks(matrix_sizes)
+    plt.xlabel('Matrix Size (square)')
+    plt.ylabel('Log10(distance)')
+    plt.title('Frobenious Distance of MMM between ieee64(oracle) and arithimetic-i')
+    plt.show()
 
 if __name__ == '__main__':
     main()
